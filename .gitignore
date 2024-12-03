@@ -1,13 +1,31 @@
 __pycache__/
+
+# Jupyter notebook checkpoints
 .ipynb_checkpoints/
-processed
-outputs
-outputs_v2
-checkpoints
-checkpoints_v2
-trash
-examples*
-.env
-build
+
+processed/
+
+# Output files
+outputs/
+outputs_v2/
+
+# Checkpoints
+checkpoints/
+checkpoints_v2/
+
+trash/
+examples*/
+
+# Build artifacts
+build/
 *.egg-info/
 *.zip
+
+# Python virtual environment
+.venv/
+
+# Ignore environment configuration
+.env
+.env.*
+
+MeloTTS/
