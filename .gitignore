@@ -9,6 +9,7 @@ resources/
 # Output files
 outputs/
 outputs_v2/
+uploaded_audio/
 
 # Checkpoints
 checkpoints/
