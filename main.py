@@ -47,7 +47,7 @@ def run_tts_script(audio_path: str):
     tts.py를 subprocess로 실행하고 결과 벡터를 반환
     """
 
-    script_path = "tts.py"
+    script_path = "tts_vector.py"
     venv_python_path = os.path.join('.venv', 'Scripts', 'python.exe') # 가상환경 Python 경로에 대한 동적 탐색
 
     command = [
