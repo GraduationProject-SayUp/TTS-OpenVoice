@@ -1,3 +1,6 @@
+#.\.venv\Scripts\activate
+# uvicorn main:app --reload --host 127.0.0.1 --port 8000
+
 import os
 import subprocess
 import json
@@ -31,7 +34,7 @@ async def upload_audio(file: UploadFile = File(...), authorization: str = Header
         raise HTTPException(status_code=500, detail=f"Error running tts.py: {str(e)}")
 
     try:
-        send_to_spring_server(authorization, result)
+        spring_response = send_to_spring_server(authorization, result)
     except Exception as e:
         print(f"Error details: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error processing audio file: {str(e)}")
@@ -39,7 +42,8 @@ async def upload_audio(file: UploadFile = File(...), authorization: str = Header
     return {
         "filename": file.filename,
         "status": "uploaded",
-        "tts_vector": result
+        "tts_vector": result,
+        "spring_response": spring_response
     }
 
 def run_tts_script(audio_path: str):
@@ -70,7 +74,7 @@ def run_tts_script(audio_path: str):
         )
 
         # 타임아웃과 함께 출력 캡처
-        stdout, stderr = process.communicate(timeout=30)
+        stdout, stderr = process.communicate(timeout=120)
         print(f"Raw stdout: {stdout}")
 
         # 반환 코드 확인
