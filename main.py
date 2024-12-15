@@ -109,7 +109,7 @@ def send_to_spring_server(token: str, target_se: list):
     """
     print("Spring 서버로 데이터 전송 중")
 
-    url = "http://127.0.0.1:8080/api/users/tts-vector"
+    url = "http://127.0.0.1:8080/api/users/tts"
     headers = {
         "Content-Type": "application/json",
         "Authorization": token
