@@ -7,6 +7,7 @@ import json
 import traceback
 import requests
 from fastapi import FastAPI, File, UploadFile, HTTPException, Header
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -17,6 +18,12 @@ class TTSVector(BaseModel):
 
 @app.post("/upload")
 async def upload_audio(file: UploadFile = File(...), authorization: str = Header(...)):
+    """
+    1. 음성 파일을 업로드하고 저장
+    2. tts_vector.py를 실행하여 벡터를 생성
+    3. 결과 벡터를 Spring 서버로 전송
+    """
+    
     upload_dir = "uploaded_audio"
     os.makedirs(upload_dir, exist_ok=True)
     file_path = os.path.join(upload_dir, file.filename)
@@ -28,17 +35,20 @@ async def upload_audio(file: UploadFile = File(...), authorization: str = Header
     file_path = f'uploaded_audio/news.mp3'  # 일단 임시 파일로 변경경
 
     try:
-        result = run_tts_script(file_path)
+        # tts_vector.py 실행
+        result = run_tts_script(file_path)  
     except Exception as e:
         print(f"Error details: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error running tts.py: {str(e)}")
 
     try:
-        spring_response = send_to_spring_server(authorization, result)
+        # Spring 서버로 전송
+        spring_response = send_vector_to_spring(authorization, result)
     except Exception as e:
         print(f"Error details: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error processing audio file: {str(e)}")
 
+    # 최종 결과 반환
     return {
         "filename": file.filename,
         "status": "uploaded",
@@ -73,7 +83,7 @@ def run_tts_script(audio_path: str):
             errors='replace'
         )
 
-        # 타임아웃과 함께 출력 캡처
+        # 타임아웃을 설정하고 출력 캡처
         stdout, stderr = process.communicate(timeout=120)
         print(f"Raw stdout: {stdout}")
 
@@ -82,10 +92,10 @@ def run_tts_script(audio_path: str):
             print(f"Error output: {stderr}")
             raise RuntimeError(f"tts.py 실행 중 오류: {stderr}")
 
+        # JSON 형식 검사
         stdout_lines = stdout.strip().splitlines()
         for line in stdout_lines:
             try:
-                # JSON 형식인 경우 반환
                 json_data = json.loads(line)
                 if "target_se" in json_data:  # JSON 데이터가 target_se 키를 포함하는지 확인
                     return json_data.get("target_se")
@@ -103,9 +113,9 @@ def run_tts_script(audio_path: str):
         raise
 
 
-def send_to_spring_server(token: str, target_se: list):
+def send_vector_to_spring(token: str, target_se: list):
     """
-    Spring 서버로 데이터를 전송
+    생성된 벡터를 Spring 서버로 전송
     """
     print("Spring 서버로 데이터 전송 중")
 
@@ -121,7 +131,6 @@ def send_to_spring_server(token: str, target_se: list):
     try:
         response = requests.post(url, json=payload, headers=headers)
         
-        # 응답 상태 코드와 본문 출력 (디버깅용)
         print(f"Response status code: {response.status_code}")
         print(f"Response body: {response.text}")
     
@@ -139,3 +148,80 @@ def send_to_spring_server(token: str, target_se: list):
     except requests.RequestException as e:
         print(f"Spring 서버 전송 중 오류: {e}")
         raise
+    
+    
+class VoiceRequest(BaseModel):
+    text: str
+    vector: str
+
+
+@app.post("/convert")
+async def convert_voice(request: VoiceRequest, authorization: str = Header(...)):
+    """
+    1. voice.py를 실행해 입력된 텍스트와 벡터로 음성을 생성
+    2. 생성된 음성 파일을 Spring 서버로 전송
+    """
+    try:
+        # 입력된 데이터
+        text = request.text
+        vector = request.vector
+        
+        output_file = run_voice_script(text, vector)  # voice.py 실행 후 음성 파일 생성
+
+        # 생성된 파일 반환
+        return FileResponse(
+            path=output_file,
+            filename=os.path.basename(output_file),
+            media_type="audio/wav"
+        )
+        
+    except Exception as e:
+        print(f"Error: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error processing voice conversion: {str(e)}")
+
+
+def run_voice_script(text: str, vector: str) -> str:
+    """
+    voice.py를 subprocess로 실행하고 음성 파일 경로를 반환
+    """
+    script_path = "voice.py"
+    venv_python_path = os.path.join(".venv", "Scripts", "python.exe")  # 가상환경 Python 실행 경로
+    output_dir = "outputs_v2"
+    os.makedirs(output_dir, exist_ok=True)
+
+    output_path = f"{output_dir}/output_v2_news.wav"
+
+    # voice.py 실행 명령어
+    command = [
+        venv_python_path,
+        script_path,
+        "--text", text,
+        "--vector", vector,
+        "--output", output_path
+    ]
+
+    print(f"Running command: {' '.join(command)}")
+
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        stdout, stderr = process.communicate(timeout=120)
+
+        if process.returncode != 0:
+            print(f"Error output: {stderr}")
+            raise RuntimeError(f"voice.py 실행 중 오류: {stderr}")
+
+        print(f"voice.py output: {stdout}")
+        return output_path  # 성공적으로 생성된 음성 파일 경로 반환
+
+    except subprocess.TimeoutExpired:
+        process.kill()
+        raise RuntimeError("voice.py 실행 시간 초과")
+    except Exception as e:
+        raise RuntimeError(f"voice.py 실행 중 예외 발생: {str(e)}")
+
